@@ -2,3 +2,4 @@ fastapi
 cloudinary
 supabase
 python-dotenv
+passlib[bcrypt]

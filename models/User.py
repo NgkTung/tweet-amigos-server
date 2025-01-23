@@ -16,6 +16,8 @@ class UserBase(BaseModel):
 
 # Request model for creating a user
 class UserCreate(UserBase):
+    username: str
+    email: str
     password: str  # Password is required only when creating a user
 
 # Response model for returning user data
