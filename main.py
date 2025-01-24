@@ -6,7 +6,7 @@ from utils.cloudinary import upload_image
 from dotenv import load_dotenv
 from passlib.context import CryptContext
 
-from models.User import UserBase, UserCreate
+from models.User import UserBase, UserCreate, SignInRequest
 from models.Tweet import TweetResponse
 import os
 
@@ -49,45 +49,72 @@ async def sign_up(request: UserCreate):
 
 		# Use Supabase Auth to create the user (Supabase already handles password hashing)
 		response = supabase.auth.sign_up({
-			"username": request.username,
 			"email": request.email,
-			"password": hashed_password,  # Supabase handles hashing internally
+			"password": request.password,  # Supabase handles hashing internally
 		})
 
+		# Check if response contains error
 		if not response:
 			raise HTTPException(status_code=400, detail=response["error"]["message"])
 
+		# Extract user info from the response
+		user = response.user
+		
+		if not user:
+			raise HTTPException(status_code=400, detail="User creation failed, no user data found")
+
+		user_id = user.id
+
+		user_data = {
+			"id": user_id,
+			"username": request.username,
+			"email": request.email,
+			"password": hashed_password,
+			"role_id": "d380cc38-cd59-4e4a-8f5d-4a6afec84fca"
+		}
+
+		insert_response = supabase.table('users').insert(user_data).execute()
+
+		
+		if not insert_response:
+			raise HTTPException(status_code=500, detail="Error saving user data")
+		
 		return {"message": "Sign-up successful!"}
+
 	except Exception as e:
 		raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/signin")
 async def sign_in(request: SignInRequest):
-    try:
-        # Directly check the password using Supabase Auth (it manages password hashing)
-        response = supabase.auth.sign_in({
-            "email": request.email,
-            "password": request.password,
-        })
+	try:
+		# Directly check the password using Supabase Auth (it manages password hashing)
+		response = supabase.auth.sign_in_with_password({
+			"email": request.email,
+			"password": request.password,
+		})
 
-        if not response:
-            raise HTTPException(status_code=400, detail=response["error"]["message"])
+		if not response:
+			raise HTTPException(status_code=400, detail=response["error"]["message"])
+		
+		print(response.user.id)
+		
+		user_data = supabase.table("users").select("*").eq("id", response.user.id).execute()
 
-        return {"message": "Sign-in successful!", "user": response.get("user")}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+		return {"message": "Sign-in successful!", "user": user_data.data}
+	except Exception as e:
+		raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/signout")
 async def sign_out():
-    try:
-        response = supabase.auth.sign_out()
+	try:
+		response = supabase.auth.sign_out()
 
-        if not response:
-            raise HTTPException(status_code=400, detail=response["error"]["message"])
+		if not response:
+			raise HTTPException(status_code=400, detail=response["error"]["message"])
 
-        return {"message": "Successfully signed out!"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+		return {"message": "Successfully signed out!"}
+	except Exception as e:
+		raise HTTPException(status_code=500, detail=str(e))
 
 # Get all tweets
 @app.get("/tweets", response_model=List[TweetResponse])

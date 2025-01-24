@@ -1,5 +1,6 @@
 from pydantic import BaseModel
+from uuid import UUID
 
 class Role(BaseModel):
-    id: str
+    id: UUID
     name: str

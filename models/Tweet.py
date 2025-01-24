@@ -2,6 +2,7 @@ from pydantic import BaseModel, HttpUrl
 from typing import Optional
 from .User import UserBase
 from datetime import datetime
+from uuid import UUID
 
 # TweetCreate for creating a new tweet
 class TweetCreate(BaseModel):
@@ -18,7 +19,7 @@ class TweetUpdate(BaseModel):
 
 # TweetResponse for returning tweet details (i.e., after creation)
 class TweetResponse(BaseModel):
-    id: int
+    id: UUID
     content: str
     user_id: int
     retweet_id: Optional[int]
@@ -28,7 +29,7 @@ class TweetResponse(BaseModel):
 
 # Tweet model (you may use this for internal representations in DB models)
 class Tweet(BaseModel):
-    id: Optional[int]
+    id: Optional[UUID]
     content: str
     user_id: int
     retweet_id: Optional[int]

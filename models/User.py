@@ -3,6 +3,7 @@ from typing import Optional
 
 from pydantic import BaseModel, HttpUrl
 from typing import Optional
+from uuid import UUID
 
 # Shared fields for user models
 class UserBase(BaseModel):
@@ -22,7 +23,7 @@ class UserCreate(UserBase):
 
 # Response model for returning user data
 class UserResponse(UserBase):
-    id: int  # Include id in the response model
+    id: UUID  # Include id in the response model
 
 # Model for updating user info (e.g., partial update)
 class UserUpdate(UserBase):
@@ -33,3 +34,7 @@ class UserUpdate(UserBase):
     role: Optional[str] = None
     profile_image_url: Optional[HttpUrl] = None
     background_image_url: Optional[HttpUrl] = None
+    
+class SignInRequest(BaseModel):
+    email: str
+    password: str
