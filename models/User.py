@@ -24,6 +24,9 @@ class UserCreate(UserBase):
 # Response model for returning user data
 class UserResponse(UserBase):
     id: UUID  # Include id in the response model
+    
+class UserAccess(BaseModel):
+    access_token: str
 
 # Model for updating user info (e.g., partial update)
 class UserUpdate(UserBase):

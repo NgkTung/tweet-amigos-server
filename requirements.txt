@@ -3,3 +3,4 @@ cloudinary
 supabase
 python-dotenv
 passlib[bcrypt]
+pyjwt
