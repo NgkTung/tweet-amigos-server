@@ -29,6 +29,7 @@ class TweetResponse(BaseModel):
     retweet_count: int
     likes_count: int
     is_liked: bool
+    reply_to: Optional[str] = None
 
 # Tweet model (you may use this for internal representations in DB models)
 class Tweet(BaseModel):

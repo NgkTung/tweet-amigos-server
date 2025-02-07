@@ -268,6 +268,16 @@ async def get_tweet_by_id(tweet_id: str, user_id: Optional[str] = None):
 
 	is_liked = False
 
+	reply_to_response = supabase \
+		.from_("tweets") \
+		.select("users(email)") \
+		.eq("id", tweet_id) \
+		.execute()
+	
+	reply_to = None
+	if reply_to_response.data:
+		reply_to = reply_to_response.data[0]["users"]["email"]
+
 	if user_id:
 		is_liked_response = supabase \
 					.from_("tweet_likes") \
@@ -289,7 +299,8 @@ async def get_tweet_by_id(tweet_id: str, user_id: Optional[str] = None):
 			user=UserBase(id=user["id"], username=user["username"], email=user["email"], profile_image_url=user['profile_image_url']),
 			retweet_count=retweet_count,
 			likes_count=likes_count,
-			is_liked=is_liked
+			is_liked=is_liked,
+			reply_to=reply_to
 		)
 	return tweet_data
 
@@ -312,7 +323,15 @@ async def get_retweets(tweet_id: str, user_id: Optional[str] = None, page: int =
 	if not retweets:
 		raise HTTPException(status_code=404, detail="No retweets found")
 
-	# Prepare retweets data (add user info)
+	reply_to_response = supabase \
+		.from_("tweets") \
+		.select("users(email)") \
+		.eq("id", tweet_id) \
+		.execute()
+	
+	reply_to = None
+	if reply_to_response.data:
+		reply_to = reply_to_response.data[0]["users"]["email"]
 
 	retweets_data = []
 
@@ -362,7 +381,8 @@ async def get_retweets(tweet_id: str, user_id: Optional[str] = None, page: int =
 				),
 				retweet_count=retweet_count,
 				likes_count=likes_count,
-				is_liked=is_liked
+				is_liked=is_liked,
+				reply_to=reply_to
 			)
 		retweets_data.append(retweet_data)
 	
@@ -372,7 +392,6 @@ async def get_retweets(tweet_id: str, user_id: Optional[str] = None, page: int =
 @app.post("/tweets/{tweet_id}/toggle-like")
 async def toggle_like_tweet(tweet_id: str, request: TweetUserResponse):
 	try:
-		print(request.user_id)
 		# Check if the user has already likes the tweet
 		existing_like = supabase \
 			.from_("tweet_likes") \
