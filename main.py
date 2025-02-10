@@ -151,7 +151,6 @@ async def get_user(request: UserAccess):
 		
 		 # Fetch tweet count for the user
 		tweet_count_response = supabase.from_("tweets").select("*", count= "exact").eq("user_id", user_id).execute()
-		# print(tweet_count_response)
 		tweet_count = tweet_count_response.count
 		
 		user_data = UserResponse(
@@ -204,8 +203,6 @@ async def get_tweets(user_id: Optional[str] = None, page: int = 1, page_size: in
 			.execute()
 
 		retweet_count = len(retweet_count_response.data)  # Get the count of retweets
-
-		print(tweet)
 
 		reply_to = None
 		if tweet["retweet_id"]:
