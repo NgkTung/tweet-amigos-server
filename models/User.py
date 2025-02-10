@@ -24,6 +24,7 @@ class UserCreate(UserBase):
 # Response model for returning user data
 class UserResponse(UserBase):
     id: UUID  # Include id in the response model
+    tweet_count: Optional[int] = None
     
 class UserAccess(BaseModel):
     access_token: str

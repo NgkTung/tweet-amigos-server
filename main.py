@@ -149,6 +149,10 @@ async def get_user(request: UserAccess):
 		if not user:
 			raise HTTPException(status_code=400, detail="User not found!")
 		
+		 # Fetch tweet count for the user
+		tweet_count_response = supabase.from_("tweets").select("*", count= "exact").eq("user_id", user_id).execute()
+		# print(tweet_count_response)
+		tweet_count = tweet_count_response.count
 		
 		user_data = UserResponse(
 			id=user[0]["id"],
@@ -156,7 +160,8 @@ async def get_user(request: UserAccess):
 			username=user[0]["username"],
 			bio=user[0]["bio"],
 			profile_image_url=user[0]["profile_image_url"],
-			background_image_url=user[0]["background_image_url"]
+			background_image_url=user[0]["background_image_url"],
+			tweet_count=tweet_count
 		)
 		return user_data
 	except jwt.ExpiredSignatureError:
@@ -200,6 +205,19 @@ async def get_tweets(user_id: Optional[str] = None, page: int = 1, page_size: in
 
 		retweet_count = len(retweet_count_response.data)  # Get the count of retweets
 
+		print(tweet)
+
+		reply_to = None
+		if tweet["retweet_id"]:
+			reply_to_response = supabase \
+				.from_("tweets") \
+				.select("users(email)") \
+				.eq("id", tweet["retweet_id"]) \
+				.execute()
+		
+			if reply_to_response.data:
+				reply_to = reply_to_response.data[0]["users"]["email"]
+
 		is_liked = False
 
 		if user_id:
@@ -229,7 +247,8 @@ async def get_tweets(user_id: Optional[str] = None, page: int = 1, page_size: in
 			),
 			retweet_count=retweet_count,
 			likes_count=likes_count,
-			is_liked=is_liked
+			is_liked=is_liked,
+			reply_to=reply_to
 		)
 		tweets.append(tweet_data)
 
@@ -266,17 +285,17 @@ async def get_tweet_by_id(tweet_id: str, user_id: Optional[str] = None):
 		
 	likes_count = len(likes_count_response.data)
 
-	is_liked = False
-
+	reply_to = None
 	reply_to_response = supabase \
 		.from_("tweets") \
 		.select("users(email)") \
 		.eq("id", tweet_id) \
 		.execute()
 	
-	reply_to = None
 	if reply_to_response.data:
 		reply_to = reply_to_response.data[0]["users"]["email"]
+
+	is_liked = False
 
 	if user_id:
 		is_liked_response = supabase \
@@ -443,37 +462,46 @@ async def check_like_status(tweet_id: str, request: TweetUserResponse):
 
 @app.post("/tweets")
 async def create_tweet(
-	content: str = Form(...),
-	user_id: str = Form(...),
-	retweet_id: Optional[int] = Form(None),
-	image: Optional[UploadFile] = None
+    content: str = Form(...),
+    user_id: str = Form(...),
+    retweet_id: Optional[str] = Form(None),
+    image: Optional[UploadFile] = None
 ):
-	try:
-		image_url = None
-		if image:
-			image_url = upload_image(image.file, folder="tweet_images")
-		
-		if retweet_id:
-			response = supabase.table("tweets").select("*").eq("id", retweet_id).execute()
-			
-			if not response.data:
-				return{"error": "The original tweet does not exist."}
-		
-		tweet_data = {
-			"user_id": user_id,
-			"content": content,
-			"image_url": image_url
-		}
+    try:
+        # Initialize image_url as None
+        image_url = None
+        
+        # Handle image upload if provided
+        if image:
+            image_url = upload_image(image.file, folder="tweet_images")
+        
+        # If retweet_id is provided, check if the original tweet exists
+        if retweet_id:
+            response = supabase.table("tweets").select("*").eq("id", retweet_id).execute()
+            if not response.data:
+                return {"error": "The original tweet does not exist."}
+        
+        # Prepare the tweet data
+        tweet_data = {
+            "user_id": user_id,
+            "content": content,
+            "image_url": image_url,
+            "retweet_id": retweet_id if retweet_id is not None else None
+        }
 
-		response = supabase.table("tweets").insert(tweet_data).execute()
+        # Insert the tweet data into the database
+        response = supabase.table("tweets").insert(tweet_data).execute()
 
-		if response:
-			return {
-			"message": "Tweet created successfully",
-			"tweet": response.data
-		}
-		else:
-			raise RuntimeError("Failed to create tweet: " + response.error)  
-		
-	except RuntimeError as e:
-		return {"error": str(e)}
+        # Check for errors in the response
+        if response.error:
+            raise RuntimeError("Failed to create tweet: " + response.error['message'])
+        
+        # If successful, return a success message along with the tweet data
+        return {
+            "message": "Tweet created successfully",
+            "tweet": response.data
+        }
+    
+    except RuntimeError as e:
+        return {"error": str(e)}
+
