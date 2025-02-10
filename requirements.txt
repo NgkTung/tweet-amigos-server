@@ -1,4 +1,4 @@
-fastapi["standard"]
+fastapi
 cloudinary
 supabase
 python-dotenv
