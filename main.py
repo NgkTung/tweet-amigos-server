@@ -137,6 +137,37 @@ async def sign_out():
 	except Exception as e:
 		raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/users")
+async def get_users(page: int = 1, page_size: int = 10):
+	offset = (page - 1) * page_size
+
+	response = supabase \
+		.from_("users") \
+		.select("*") \
+		.order("created_at", desc=True) \
+		.range(offset, offset + page_size - 1) \
+		.execute()
+	
+	if not response.data:
+		raise HTTPException(status_code=400, detail="Error fetching users")
+	
+	users = []
+	for user in response.data:
+		tweet_count_response = supabase.from_("tweets").select("*", count= "exact").eq("user_id", user["id"]).execute()
+		tweet_count = tweet_count_response.count
+
+		user_data = UserResponse(
+			id=user["id"],
+			email=user["email"],
+			username=user["username"],
+			bio=user["bio"],
+			profile_image_url=user["profile_image_url"],
+			background_image_url=user["background_image_url"],
+			tweet_count=tweet_count
+		)
+		users.append(user_data)
+	return {"data": users, "page": page, "page_size": page_size}
+
 # Get user
 @app.post("/user", response_model=UserResponse)
 async def get_user(request: UserAccess):
