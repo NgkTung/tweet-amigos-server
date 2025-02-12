@@ -6,6 +6,7 @@ from utils.cloudinary import upload_image
 from dotenv import load_dotenv
 from passlib.context import CryptContext
 from datetime import datetime, timedelta
+from uuid import UUID
 
 from models.User import UserBase, UserCreate, UserResponse, UserAccess, SignInRequest
 from models.Tweet import TweetResponse, TweetUserResponse
@@ -168,6 +169,29 @@ async def get_user(request: UserAccess):
 	except jwt.PyJWTError:
 		raise HTTPException(status_code=401, detail="Invalid token")
 
+# Get user by id
+@app.get("/user/{user_id}", response_model=UserResponse)
+async def get_user_by_id(user_id: str):
+	response = supabase.table("users").select("*").eq("id", user_id).execute()
+	user = response.data
+
+	if not user:
+		raise HTTPException(status_code=404, detail="User not found!")
+		
+	# Fetch tweet count for the user
+	tweet_count_response = supabase.from_("tweets").select("*", count= "exact").eq("user_id", user_id).execute()
+	tweet_count = tweet_count_response.count
+		
+	user_data = UserResponse(
+		id=user[0]["id"],
+		email=user[0]["email"],
+		username=user[0]["username"],
+		bio=user[0]["bio"],
+		profile_image_url=user[0]["profile_image_url"],
+		background_image_url=user[0]["background_image_url"],
+		tweet_count=tweet_count
+	)
+	return user_data
 # Get all tweets
 @app.get("/tweets")
 async def get_tweets(user_id: Optional[str] = None, page: int = 1, page_size: int = 10):
@@ -254,7 +278,7 @@ async def get_tweets(user_id: Optional[str] = None, page: int = 1, page_size: in
 
 # Get tweet by ID
 @app.get("/tweets/{tweet_id}", response_model=TweetResponse)
-async def get_tweet_by_id(tweet_id: str, user_id: Optional[str] = None):
+async def get_tweet_by_id(tweet_id: str, user_id: Optional[UUID] = None):
 	response = supabase \
 	.table("tweets") \
 	.select("id, content, user_id, retweet_id, image_url, created_at, users(id, username, email, profile_image_url)") \
@@ -283,24 +307,25 @@ async def get_tweet_by_id(tweet_id: str, user_id: Optional[str] = None):
 	likes_count = len(likes_count_response.data)
 
 	reply_to = None
-	reply_to_response = supabase \
-		.from_("tweets") \
-		.select("users(email)") \
-		.eq("id", tweet_id) \
-		.execute()
-	
-	if reply_to_response.data:
-		reply_to = reply_to_response.data[0]["users"]["email"]
+	if tweet[0]["retweet_id"]:
+		reply_to_response = supabase \
+			.from_("tweets") \
+			.select("users(email)") \
+			.eq("id", tweet[0]["retweet_id"]) \
+			.execute()
+		print(reply_to_response.data)
+		if reply_to_response.data:
+			reply_to = reply_to_response.data[0]["users"]["email"]
 
 	is_liked = False
 
 	if user_id:
 		is_liked_response = supabase \
-					.from_("tweet_likes") \
-					.select("id") \
-					.eq("tweet_id", tweet_id) \
-					.eq("user_id", user_id) \
-					.execute()
+				.from_("tweet_likes") \
+				.select("id") \
+				.eq("tweet_id", tweet_id) \
+				.eq("user_id", user_id) \
+				.execute()
 				
 		is_liked = bool(is_liked_response.data)
 
