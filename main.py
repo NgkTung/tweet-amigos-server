@@ -8,7 +8,7 @@ from passlib.context import CryptContext
 from datetime import datetime, timedelta
 from uuid import UUID
 
-from models.User import UserBase, UserCreate, UserResponse, UserAccess, SignInRequest
+from models.User import UserBase, UserCreate, UserResponse, UserAccess, UserFollowerResponse, SignInRequest
 from models.Tweet import TweetResponse, TweetUserResponse
 import os
 import jwt
@@ -138,7 +138,7 @@ async def sign_out():
 		raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/users")
-async def get_users(page: int = 1, page_size: int = 10):
+async def get_users(user_id: Optional[str] = None, page: int = 1, page_size: int = 10):
 	offset = (page - 1) * page_size
 
 	response = supabase \
@@ -156,6 +156,23 @@ async def get_users(page: int = 1, page_size: int = 10):
 		tweet_count_response = supabase.from_("tweets").select("*", count= "exact").eq("user_id", user["id"]).execute()
 		tweet_count = tweet_count_response.count
 
+		follower_count_response = supabase.from_("user_followers").select("*", count="exact").eq("user_id", user["id"]).execute()
+		follower_count = follower_count_response.count
+
+		following_count_response = supabase.from_("user_followers").select("*", count="exact").eq("follower_id", user["id"]).execute()
+		following_count = following_count_response.count
+
+		is_followed = None
+		if user_id:
+			is_followed_response = supabase \
+				.from_("user_followers") \
+				.select("id") \
+				.eq("follower_id", user_id) \
+				.eq("user_id", user["id"]) \
+				.execute()
+				
+			is_followed = bool(is_followed_response.data)
+
 		user_data = UserResponse(
 			id=user["id"],
 			email=user["email"],
@@ -163,7 +180,11 @@ async def get_users(page: int = 1, page_size: int = 10):
 			bio=user["bio"],
 			profile_image_url=user["profile_image_url"],
 			background_image_url=user["background_image_url"],
-			tweet_count=tweet_count
+			created_at=user["created_at"],
+			tweet_count=tweet_count,
+			follower_count=follower_count,
+			following_count=following_count,
+			is_followed=is_followed
 		)
 		users.append(user_data)
 	return {"data": users, "page": page, "page_size": page_size}
@@ -184,6 +205,14 @@ async def get_user(request: UserAccess):
 		 # Fetch tweet count for the user
 		tweet_count_response = supabase.from_("tweets").select("*", count= "exact").eq("user_id", user_id).execute()
 		tweet_count = tweet_count_response.count
+
+		# Fetch followers count for the user
+		follower_count_response = supabase.from_("user_followers").select("*", count="exact").eq("user_id", user_id).execute()
+		follower_count = follower_count_response.count
+
+		# Fetch following count for the user
+		following_count_response = supabase.from_("user_followers").select("*", count="exact").eq("follower_id", user_id).execute()
+		following_count = following_count_response.count
 		
 		user_data = UserResponse(
 			id=user[0]["id"],
@@ -192,7 +221,10 @@ async def get_user(request: UserAccess):
 			bio=user[0]["bio"],
 			profile_image_url=user[0]["profile_image_url"],
 			background_image_url=user[0]["background_image_url"],
-			tweet_count=tweet_count
+			created_at=user[0]["created_at"],
+			tweet_count=tweet_count,
+			follower_count=follower_count,
+			following_count=following_count
 		)
 		return user_data
 	except jwt.ExpiredSignatureError:
@@ -202,7 +234,7 @@ async def get_user(request: UserAccess):
 
 # Get user by id
 @app.get("/user/{user_id}", response_model=UserResponse)
-async def get_user_by_id(user_id: str):
+async def get_user_by_id(user_id: str, follower_id: Optional[str] = None):
 	response = supabase.table("users").select("*").eq("id", user_id).execute()
 	user = response.data
 
@@ -212,7 +244,26 @@ async def get_user_by_id(user_id: str):
 	# Fetch tweet count for the user
 	tweet_count_response = supabase.from_("tweets").select("*", count= "exact").eq("user_id", user_id).execute()
 	tweet_count = tweet_count_response.count
+
+	# Fetch followers count for the user
+	follower_count_response = supabase.from_("user_followers").select("*", count="exact").eq("user_id", user_id).execute()
+	follower_count = follower_count_response.count
 		
+	# Fetch following count for the user
+	following_count_response = supabase.from_("user_followers").select("*", count="exact").eq("follower_id", user_id).execute()
+	following_count = following_count_response.count
+
+	is_followed = None
+	if follower_id:
+		is_followed_response = supabase \
+			.from_("user_followers") \
+			.select("id") \
+			.eq("follower_id", follower_id) \
+			.eq("user_id", user_id) \
+			.execute()
+				
+		is_followed = bool(is_followed_response.data)
+
 	user_data = UserResponse(
 		id=user[0]["id"],
 		email=user[0]["email"],
@@ -220,9 +271,44 @@ async def get_user_by_id(user_id: str):
 		bio=user[0]["bio"],
 		profile_image_url=user[0]["profile_image_url"],
 		background_image_url=user[0]["background_image_url"],
-		tweet_count=tweet_count
+		created_at=user[0]["created_at"],
+		tweet_count=tweet_count,
+		follower_count=follower_count,
+		following_count=following_count,
+		is_followed=is_followed
 	)
 	return user_data
+
+# Toggle follow user
+@app.post("/user/{user_id}")
+async def toggle_follow_user(user_id: str, request: UserFollowerResponse):
+	# Check if follower already follow the user
+	existing_follow = supabase \
+		.table("user_followers") \
+		.select("*") \
+		.eq("user_id", user_id) \
+		.eq("follower_id", request.follower_id) \
+		.execute()
+	# If yes, then un-follow
+	if existing_follow.data:
+		response = supabase.table("user_followers") \
+			.delete() \
+			.eq("user_id", user_id) \
+			.eq("follower_id", request.follower_id) \
+			.execute()
+		if not response.data:
+			raise HTTPException(status_code=500, detail="Failed to un-follow the user")
+		return {"message": "Un-follow user successfully!"}
+	# If not, then follow user
+	else:
+		response = supabase \
+		.table("user_followers") \
+		.insert({"user_id": user_id, "follower_id": str(request.follower_id)}) \
+		.execute()
+		if not response.data:
+			raise HTTPException(status_code=500, detail="Failed to follow the user")
+		return {"message": "Follow user successfully!"}
+
 # Get all tweets
 @app.get("/tweets")
 async def get_tweets(user_id: Optional[str] = None, page: int = 1, page_size: int = 10):
@@ -326,7 +412,7 @@ async def get_tweet_by_id(tweet_id: str, user_id: Optional[UUID] = None):
 		.eq("retweet_id", tweet_id) \
 		.execute()
 
-	retweet_count = len(retweet_count_response.data) 
+	retweet_count = len(retweet_count_response.data)
 
 	# Count the number of users who liked this tweet
 	likes_count_response = supabase \
@@ -546,8 +632,8 @@ async def create_tweet(
         response = supabase.table("tweets").insert(tweet_data).execute()
 
         # Check for errors in the response
-        if response.error:
-            raise RuntimeError("Failed to create tweet: " + response.error['message'])
+        if not response:
+            return HTTPException(status_code=400, detail="Failed to create tweet")
         
         # If successful, return a success message along with the tweet data
         return {
