@@ -35,7 +35,7 @@ class UserAccess(BaseModel):
 
 # Model for updating user info (e.g., partial update)
 class UserUpdate(UserBase):
-	email: Optional[str] = None
+	# email: Optional[str] = None
 	username: Optional[str] = None
 	password: Optional[str] = None  # Optional during update
 	bio: Optional[str] = None

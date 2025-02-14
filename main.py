@@ -1,8 +1,8 @@
-from fastapi import FastAPI, UploadFile, Form, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from typing import Optional, List
+from typing import Optional
 from supabase import create_client
-from utils.cloudinary import upload_image
+from utils.cloudinary import upload_image, delete_image
 from dotenv import load_dotenv
 from passlib.context import CryptContext
 from datetime import datetime, timedelta
@@ -309,6 +309,62 @@ async def toggle_follow_user(user_id: str, request: UserFollowerResponse):
 			raise HTTPException(status_code=500, detail="Failed to follow the user")
 		return {"message": "Follow user successfully!"}
 
+# Update user
+@app.put("/user/{user_id}")
+async def update_user(user_id: str,
+	username: str = Form(...),
+	bio: Optional[str] = Form(None),
+	profile_image: Optional[UploadFile] = File(None),
+	background_image: Optional[UploadFile] = File(None)):
+
+	profile_image_url = None
+	background_image_url = None
+
+	# Upload the profile image if provided
+	if profile_image:
+		profile_image_url = upload_image(profile_image.file, folder="profile_images")
+
+	# Upload the background image if provided
+	if background_image:
+		background_image_url = upload_image(background_image.file, folder="background_images")
+
+	# Fetch the existing user data from the database
+	response = supabase.table("users").select("*").eq("id", user_id).execute()
+	if not response.data:
+		raise HTTPException(status_code=404, detail="User not found")
+	
+	user_data = response.data[0]
+	
+	# Prepare the data to update the user
+	user_update_data = {
+		"username": username,
+		"bio": bio if bio else None,
+	}
+	# If profile image is changed, delete the old one from Cloudinary
+	if profile_image and user_data["profile_image_url"]:
+		delete_image(user_data["profile_image_url"])
+
+	# If background image is changed, delete the old one from Cloudinary
+	if background_image and user_data["background_image_url"]:
+		delete_image(user_data["background_image_url"])
+
+	# Update profile image URL if provided
+	if profile_image_url:
+		user_update_data["profile_image_url"] = profile_image_url
+
+	# Update background image URL if provided
+	if background_image_url:
+		user_update_data["background_image_url"] = background_image_url
+
+	# Update the user record in the database
+	update_response = supabase.table("users").update(user_update_data).eq("id", user_id).execute()
+	
+	# Check if the update was successful
+	if not update_response.data:
+		raise HTTPException(status_code=500, detail="Failed to update user")
+
+	return {"message": "User updated successfully", "data": update_response.data}
+
 # Get all tweets
 @app.get("/tweets")
 async def get_tweets(user_id: Optional[str] = None, page: int = 1, page_size: int = 10):
@@ -599,48 +655,49 @@ async def check_like_status(tweet_id: str, request: TweetUserResponse):
 	except Exception as e:
 		raise HTTPException(status_code=500, detail=str(e))
 
+
 @app.post("/tweets")
 async def create_tweet(
-    content: str = Form(...),
-    user_id: str = Form(...),
-    retweet_id: Optional[str] = Form(None),
-    image: Optional[UploadFile] = None
+	content: str = Form(...),
+	user_id: str = Form(...),
+	retweet_id: Optional[str] = Form(None),
+	image: Optional[UploadFile] = None
 ):
-    try:
-        # Initialize image_url as None
-        image_url = None
-        
-        # Handle image upload if provided
-        if image:
-            image_url = upload_image(image.file, folder="tweet_images")
-        
-        # If retweet_id is provided, check if the original tweet exists
-        if retweet_id:
-            response = supabase.table("tweets").select("*").eq("id", retweet_id).execute()
-            if not response.data:
-                return {"error": "The original tweet does not exist."}
-        
-        # Prepare the tweet data
-        tweet_data = {
-            "user_id": user_id,
-            "content": content,
-            "image_url": image_url,
-            "retweet_id": retweet_id if retweet_id is not None else None
-        }
+	try:
+		# Initialize image_url as None
+		image_url = None
+		
+		# Handle image upload if provided
+		if image:
+			image_url = upload_image(image.file, folder="tweet_images")
+		
+		# If retweet_id is provided, check if the original tweet exists
+		if retweet_id:
+			response = supabase.table("tweets").select("*").eq("id", retweet_id).execute()
+			if not response.data:
+				return {"error": "The original tweet does not exist."}
+		
+		# Prepare the tweet data
+		tweet_data = {
+			"user_id": user_id,
+			"content": content,
+			"image_url": image_url,
+			"retweet_id": retweet_id if retweet_id is not None else None
+		}
 
-        # Insert the tweet data into the database
-        response = supabase.table("tweets").insert(tweet_data).execute()
+		# Insert the tweet data into the database
+		response = supabase.table("tweets").insert(tweet_data).execute()
 
-        # Check for errors in the response
-        if not response:
-            return HTTPException(status_code=400, detail="Failed to create tweet")
-        
-        # If successful, return a success message along with the tweet data
-        return {
-            "message": "Tweet created successfully",
-            "tweet": response.data
-        }
-    
-    except RuntimeError as e:
-        return {"error": str(e)}
+		# Check for errors in the response
+		if not response:
+			return HTTPException(status_code=400, detail="Failed to create tweet")
+		
+		# If successful, return a success message along with the tweet data
+		return {
+			"message": "Tweet created successfully",
+			"tweet": response.data
+		}
+	
+	except RuntimeError as e:
+		return {"error": str(e)}
 
