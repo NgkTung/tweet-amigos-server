@@ -32,6 +32,9 @@ def upload_image(image_file, folder):
 def delete_image(image_url: str):
 	public_id = None
 	if image_url:
+		if "res.cloudinary.com" not in image_url:
+			print("Return")
+			return
 		public_id = '/'.join(image_url.split('/upload/')[1].split('.')[0].split('/')[1:])
 	
 	if public_id:

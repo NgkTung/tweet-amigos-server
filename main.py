@@ -342,11 +342,18 @@ async def update_user(user_id: str,
 	}
 	# If profile image is changed, delete the old one from Cloudinary
 	if profile_image and user_data["profile_image_url"]:
-		delete_image(user_data["profile_image_url"])
+		try:
+			delete_image(user_data["profile_image_url"])
+		except:
+			raise HTTPException(status_code=500, detail="Failed to delete the profile image")
+
 
 	# If background image is changed, delete the old one from Cloudinary
 	if background_image and user_data["background_image_url"]:
-		delete_image(user_data["background_image_url"])
+		try:
+			delete_image(user_data["background_image_url"])
+		except:
+			raise HTTPException(status_code=500, detail="Failed to delete the background image")
 
 	# Update profile image URL if provided
 	if profile_image_url:
