@@ -279,6 +279,98 @@ async def get_user_by_id(user_id: str, follower_id: Optional[str] = None):
 	)
 	return user_data
 
+# Get all tweets of user by user id
+@app.get("/user/{user_id}/tweets")
+async def get_tweets_by_user_id(user_id: str, page: Optional[int] = 1, page_size: Optional[int] = 10):
+	existing_user_response = supabase \
+		.table("users") \
+		.select("*") \
+		.eq("id", user_id) \
+		.execute()
+	
+	if not existing_user_response.data:
+		raise HTTPException(status_code=404, detail="User not found!")
+	
+	# Calculate offset
+	offset = (page - 1) * page_size
+	
+	user_tweets_response = supabase \
+		.from_("tweets") \
+		.select("id, content, user_id, retweet_id, image_url, created_at, users(id, username, email, profile_image_url)") \
+		.eq("user_id", user_id) \
+		.order("created_at", desc=True) \
+		.range(offset, offset + page_size - 1) \
+		.execute()
+	
+	if not user_tweets_response.data:
+		raise HTTPException(status_code=500, detail="Failed to fetch tweets")
+	
+	tweets = []
+	for tweet in user_tweets_response.data:
+		# Count the number of users who liked this tweet
+		likes_count_response = supabase \
+			.from_("tweet_likes") \
+			.select("id") \
+			.eq("tweet_id", tweet["id"]) \
+			.execute()
+		
+		likes_count = len(likes_count_response.data)
+
+		# Count the number of retweets for this tweet
+		retweet_count_response = supabase \
+			.from_("tweets") \
+			.select("id") \
+			.eq("retweet_id", tweet["id"]) \
+			.execute()
+
+		retweet_count = len(retweet_count_response.data)  # Get the count of retweets
+
+		reply_to = None
+		if tweet["retweet_id"]:
+			reply_to_response = supabase \
+				.from_("tweets") \
+				.select("users(email)") \
+				.eq("id", tweet["retweet_id"]) \
+				.execute()
+		
+			if reply_to_response.data:
+				reply_to = reply_to_response.data[0]["users"]["email"]
+
+		is_liked = False
+
+		if user_id:
+			is_liked_response = supabase \
+				.from_("tweet_likes") \
+				.select("id") \
+				.eq("tweet_id", tweet["id"]) \
+				.eq("user_id", user_id) \
+				.execute()
+			
+			is_liked = bool(is_liked_response.data)
+
+		# Get the user data for this tweet
+		user = tweet["users"]
+		tweet_data = TweetResponse(
+			id=tweet["id"],
+			content=tweet["content"],
+			user_id=tweet["user_id"],
+			retweet_id=tweet.get("retweet_id"),
+			image_url=tweet.get("image_url"),
+			created_at=tweet["created_at"],
+			user=UserBase(
+				id=user["id"], 
+				username=user["username"], 
+				email=user["email"], 
+				profile_image_url=user['profile_image_url']
+			),
+			retweet_count=retweet_count,
+			likes_count=likes_count,
+			is_liked=is_liked,
+			reply_to=reply_to
+		)
+		tweets.append(tweet_data)
+	return  {"data": tweets, "page": 1, "page_size": page_size, "tweet_count": len(tweets)}
+
 # Toggle follow user
 @app.post("/user/{user_id}")
 async def toggle_follow_user(user_id: str, request: UserFollowerResponse):
@@ -374,16 +466,20 @@ async def update_user(user_id: str,
 
 # Get all tweets
 @app.get("/tweets")
-async def get_tweets(user_id: Optional[str] = None, page: int = 1, page_size: int = 10):
+async def get_tweets(user_id: Optional[str] = None, page: int = 1, page_size: int = 10, no_retweets: Optional[bool] = False):
 	# Fetch all tweets along with user details
 	offset = (page - 1) * page_size
 
-	tweets_data = supabase \
+	query = supabase \
 		.from_("tweets") \
 		.select("id, content, user_id, retweet_id, image_url, created_at, users(id, username, email, profile_image_url)") \
 		.order("created_at", desc=True) \
 		.range(offset, offset + page_size - 1) \
-		.execute()
+		
+	if no_retweets is True:
+		query = query.is_("retweet_id", None)
+	
+	tweets_data = query.execute()
 
 	if not tweets_data.data:
 		raise HTTPException(status_code=400, detail="Error fetching tweets")
@@ -453,7 +549,7 @@ async def get_tweets(user_id: Optional[str] = None, page: int = 1, page_size: in
 		)
 		tweets.append(tweet_data)
 
-	return {"data": tweets, "page": page, "page_size": page_size}
+	return {"data": tweets, "page": page, "page_size": page_size, "tweet_count": len(tweets)}
 
 
 # Get tweet by ID
