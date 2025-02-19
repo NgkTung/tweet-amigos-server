@@ -464,6 +464,100 @@ async def update_user(user_id: str,
 
 	return {"message": "User updated successfully", "data": update_response.data}
 
+# Get all followers of user by user id
+@app.get("/user/{user_id}/followers")
+async def get_user_followers(user_id: str, page: int = 1, page_size: int = 10):
+	offset = (page - 1) * page_size
+
+	existing_user_response = supabase \
+		.table("users") \
+		.select("*") \
+		.eq("id", user_id) \
+		.execute()
+	
+	if not existing_user_response.data:
+		raise HTTPException(status_code=404, detail="User not found")
+	
+	user_followers_response = supabase \
+		.from_("user_followers") \
+		.select("follower_id") \
+		.eq("user_id", user_id) \
+		.execute()
+	
+	if not user_followers_response.data:
+		return {"data": [], "page": page, "page_size": page_size, "count": 0}
+	
+	followers = []
+
+	for response in user_followers_response.data:
+		follower_response = supabase \
+			.table("users") \
+			.select("*") \
+			.eq("id", response["follower_id"]) \
+			.range(offset, offset + page_size - 1) \
+			.execute()
+		if not follower_response.data:
+			raise HTTPException(status_code=500, detail="Failed while fetching follower")
+		follower_data=follower_response.data
+		data = UserResponse(
+			id=follower_data[0]["id"],
+			email=follower_data[0]["email"],
+			username=follower_data[0]["username"],
+			bio=follower_data[0]["bio"],
+			profile_image_url=follower_data[0]["profile_image_url"],
+			background_image_url=follower_data[0]["background_image_url"],
+			created_at=follower_data[0]["created_at"],
+		)
+		followers.append(data)
+	return {"data": followers, "page": page, "page_size": page_size, "count": len(followers)}
+
+# Get all following of user by user id
+@app.get("/user/{user_id}/following")
+async def get_user_following(user_id: str, page: int = 1, page_size: int = 10):
+	offset = (page - 1) * page_size
+
+	existing_user_response = supabase \
+		.table("users") \
+		.select("*") \
+		.eq("id", user_id) \
+		.execute()
+	
+	if not existing_user_response.data:
+		raise HTTPException(status_code=404, detail="User not found")
+	
+	user_following_response = supabase \
+		.from_("user_followers") \
+		.select("user_id") \
+		.eq("follower_id", user_id) \
+		.execute()
+	
+	if not user_following_response.data:
+		return {"data": [], "page": page, "page_size": page_size, "count": 0}
+	
+	followings = []
+
+	for response in user_following_response.data:
+		follower_response = supabase \
+			.table("users") \
+			.select("*") \
+			.eq("id", response["user_id"]) \
+			.range(offset, offset + page_size - 1) \
+			.execute()
+		if not follower_response.data:
+			raise HTTPException(status_code=500, detail="Failed while fetching follower")
+		following_data=follower_response.data
+		data = UserResponse(
+			id=following_data[0]["id"],
+			email=following_data[0]["email"],
+			username=following_data[0]["username"],
+			bio=following_data[0]["bio"],
+			profile_image_url=following_data[0]["profile_image_url"],
+			background_image_url=following_data[0]["background_image_url"],
+			created_at=following_data[0]["created_at"],
+		)
+		followings.append(data)
+	return {"data": followings, "page": page, "page_size": page_size, "count": len(followings)}
+
 # Get all tweets
 @app.get("/tweets")
 async def get_tweets(user_id: Optional[str] = None, page: int = 1, page_size: int = 10, no_retweets: Optional[bool] = False):
