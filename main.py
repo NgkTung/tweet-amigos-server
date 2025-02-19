@@ -512,7 +512,7 @@ async def get_user_followers(user_id: str, page: int = 1, page_size: int = 10):
 	return {"data": followers, "page": page, "page_size": page_size, "count": len(followers)}
 
 # Get all following of user by user id
-@app.get("/user/{user_id}/following")
+@app.get("/user/{user_id}/followings")
 async def get_user_following(user_id: str, page: int = 1, page_size: int = 10):
 	offset = (page - 1) * page_size
 
