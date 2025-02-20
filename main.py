@@ -303,7 +303,7 @@ async def get_tweets_by_user_id(user_id: str, page: Optional[int] = 1, page_size
 		.execute()
 	
 	if not user_tweets_response.data:
-		raise HTTPException(status_code=500, detail="Failed to fetch tweets")
+		return {"data": [], "page": page, "page_size": page_size, "tweet_count": 0}
 	
 	tweets = []
 	for tweet in user_tweets_response.data:
@@ -576,7 +576,7 @@ async def get_tweets(user_id: Optional[str] = None, page: int = 1, page_size: in
 	tweets_data = query.execute()
 
 	if not tweets_data.data:
-		raise HTTPException(status_code=400, detail="Error fetching tweets")
+		return {"data": [], "page": page, "page_size": page_size, "tweet_count": 0}
 
 	tweets = []
 	for tweet in tweets_data.data:
@@ -898,3 +898,23 @@ async def create_tweet(
 	except RuntimeError as e:
 		return {"error": str(e)}
 
+@app.delete("/tweets/{tweet_id}")
+async def delete_tweet(tweet_id: str):
+	existing_tweet_response = supabase \
+		.from_("tweets") \
+		.select("*") \
+		.eq("id", tweet_id) \
+		.execute()
+	if not existing_tweet_response.data:
+		raise HTTPException(status_code=404, detail="Tweet not found")
+	
+	response = supabase \
+		.from_("tweets") \
+		.delete() \
+		.eq("id", tweet_id) \
+		.execute()
+
+	if not response.data:
+		raise HTTPException(status_code=500, detail="Failed to delete tweet")
+	
+	return {"message": "Tweet deleted successfully"}
